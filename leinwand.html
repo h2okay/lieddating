@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lieddating · Leinwand</title>
+<link rel="stylesheet" href="style.css">
+<style>
+html,body{height:100%;overflow:hidden}
+body{display:flex;flex-direction:column;background:radial-gradient(ellipse at 50% -15%,#45307A 0%,#1A1435 50%,#0E0B1E 100%)}
+main{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:2vh;padding:4vh 5vw;min-height:0}
+.logo{font-family:Shrikhand,Georgia,serif;font-size:5vw;line-height:1;color:var(--amber)}
+.logo span{color:var(--pink)}
+.label{font-size:1.4vw;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}
+.song{font-family:Shrikhand,Georgia,serif;font-size:6.2vw;line-height:1.05;color:var(--amber);text-wrap:balance;max-width:90vw}
+.artist{font-size:2.2vw;color:var(--muted)}
+.teaser{font-size:2vw;color:var(--text);opacity:.9}
+.drum{font-size:1.8vw;letter-spacing:.35em;text-transform:uppercase;color:var(--pink);animation:pulse 0.9s infinite alternate}
+@keyframes pulse{from{opacity:.4}to{opacity:1}}
+.names{display:flex;align-items:center;justify-content:center;gap:3vw;flex-wrap:wrap;font-size:5.4vw;font-weight:700;line-height:1.1}
+.names .heart{font-size:4.5vw}
+.pop{animation:pop .7s cubic-bezier(.2,1.4,.4,1) both}
+@keyframes pop{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:none}}
+.joker{font-size:1.6vw;color:var(--amber)}
+.qrbig{background:#fff;padding:1.2vw;border-radius:1.2vw;width:30vh;height:30vh}
+.qrbig svg,.qrsmall svg{width:100%;height:100%;display:block}
+.einlass{display:grid;grid-template-columns:auto minmax(0,1fr);gap:5vw;align-items:center;text-align:left;max-width:90vw}
+.einlass h1{margin:0;font-family:Shrikhand,Georgia,serif;font-weight:400;font-size:4.2vw;line-height:1.05}
+.einlass p{font-size:1.7vw;color:var(--muted);margin-top:1.5vh}
+.chips{display:flex;flex-wrap:wrap;gap:.5vw;justify-content:center;max-width:85vw;max-height:22vh;overflow:hidden}
+.chip{font-size:1.2vw;padding:.2vw .8vw;border-radius:999px;border:1px solid var(--line)}
+.chip.w{border-color:rgba(255,181,71,.5)}.chip.m{border-color:rgba(70,211,195,.5)}
+.chip.wait{opacity:.5;border-style:dashed}
+footer{display:flex;align-items:center;justify-content:space-between;gap:2vw;padding:1.4vh 2vw;border-top:1px solid rgba(255,255,255,.07);font-size:1.25vw;color:var(--muted)}
+footer .left{display:flex;align-items:center;gap:1.2vw}
+.qrsmall{background:#fff;padding:.35vw;border-radius:.5vw;width:6.5vh;height:6.5vh}
+footer b{color:var(--text)}
+.help{position:fixed;right:1.2vw;bottom:calc(6.5vh + 4vh);font-size:11px;color:rgba(255,255,255,.35)}
+.offline{position:fixed;left:50%;top:1vh;transform:translateX(-50%);background:#FF6B6B;color:#fff;padding:4px 12px;border-radius:999px;font-size:13px;font-weight:700}
+</style>
+</head>
+<body>
+<div id="banner"></div>
+<main id="stage"></main>
+<footer id="foot"></footer>
+<div class="help">Leertaste: nächstes Duett · Q: Einlass-Ansicht · F: Vollbild</div>
+<div id="off"></div>
+<script src="lib/firebase-app-compat.js"></script>
+<script src="lib/firebase-database-compat.js"></script>
+<script src="lib/qrcode.js"></script>
+<script src="config.js"></script>
+<script src="songs.js"></script>
+<script src="app.js"></script>
+<script>
+const { SONG, Store, analyze, computeDraw, esc, CFG } = LD;
+const $ = (s) => document.querySelector(s);
+const JOIN_URL = new URL("index.html", location.href).href.split("?")[0];
+const qrSvg = (() => { const q = qrcode(0, "M"); q.addData(JOIN_URL); q.make(); return q.createSvgTag({ cellSize: 4, margin: 1, scalable: true }); })();
+const REDUCE = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+let EV = {}, first = true, shownK = null, step = 2, forceEinlass = false, timers = [], drawing = false;
+if (Store.mode === "demo") $("#banner").innerHTML = `<div class="demo-banner">Demo-Modus: keine Firebase-Verbindung eingerichtet</div>`;
+Store.connected((ok) => { $("#off").innerHTML = ok ? "" : `<div class="offline">Keine Verbindung</div>`; });
+
+Store.subscribe((ev) => {
+  EV = ev; const cur = ev.current;
+  const k = cur ? cur.k : null;
+  if (first) { shownK = k; step = 2; first = false; }
+  else if (k !== shownK) {
+    shownK = k; timers.forEach(clearTimeout); timers = [];
+    if (cur && !REDUCE) {
+      forceEinlass = false; step = 0;
+      timers.push(setTimeout(() => { step = 1; render(); }, CFG.teaserMs || 3500));
+      timers.push(setTimeout(() => { step = 2; render(); }, (CFG.teaserMs || 3500) + (CFG.drumMs || 1800)));
+    } else step = 2;
+  }
+  render();
+});
+
+function render() {
+  const A = analyze(EV), cur = A.current;
+  const checked = A.all.length, ready = A.all.filter((p) => p.ready).length;
+  const w = A.all.filter((p) => p.g === "w").length, m = A.all.filter((p) => p.g === "m").length;
+
+  if (!cur || forceEinlass) {
+    const chips = A.all.sort((a, b) => (a.joinedAt || 0) - (b.joinedAt || 0))
+      .map((p) => `<span class="chip ${p.g} ${p.ready ? "" : "wait"}">${esc(p.first)} ${esc(p.initial)}.</span>`).join("");
+    $("#stage").innerHTML = `
+      <div class="einlass">
+        <div class="qrbig">${qrSvg}</div>
+        <div><div class="logo">Lied<span>dating</span></div>
+          <h1 style="margin-top:2vh">Scannen, swipen,<br>Handy weg.</h1></div>
+      </div>
+      <div class="label" style="margin-top:3vh">${checked} eingecheckt · ${w} Frauen · ${m} Männer</div>
+      <div class="chips">${chips}</div>`;
+  } else {
+    const s = SONG[cur.song] || { t: cur.song, a: "" };
+    let h = `<div class="label">Duett ${cur.k}${cur.joker ? " · Joker" : ""}</div>
+      <div class="song ${step === 0 ? "fade" : ""}">${esc(s.t)}</div><div class="artist">${esc(s.a)}</div>`;
+    if (step < 2) {
+      h += cur.joker
+        ? `<div class="teaser fade">Diesmal hat der Zufall entschieden …</div>`
+        : `<div class="teaser fade">${cur.likesW} ${cur.likesW === 1 ? "Frau" : "Frauen"} und ${cur.likesM} ${cur.likesM === 1 ? "Mann" : "Männer"} haben diesem Song ein Herz gegeben.</div>`;
+      if (step === 1) h += `<div class="drum">… und das Match ist</div>`;
+    } else {
+      h += `<div class="names ${first ? "" : "pop"}"><span class="w">${esc(cur.w.name)}</span><span class="heart">♥</span><span class="m">${esc(cur.m.name)}</span></div>`;
+      if (cur.joker) h += `<div class="joker">Joker-Runde: Kein gemeinsamer Song mehr frei, einer von euch mag ihn.</div>`;
+    }
+    $("#stage").innerHTML = h;
+  }
+
+  const left = A.active.filter((p) => p.sung === 0).length;
+  const status = A.allSung
+    ? `<b>Alle haben gesungen!</b> Zugabe? Einfach weiter ziehen.`
+    : `Duett <b>${A.history.length}</b> · noch <b>${left}</b> Singles ohne Duett${checked > ready ? ` · ${checked - ready} swipen noch` : ""}`;
+  $("#foot").innerHTML = `<div class="left"><div class="qrsmall">${qrSvg}</div><span>Noch nicht dabei? Scannen &amp; swipen.</span></div><div>${status}</div>`;
+}
+
+async function draw() {
+  if (drawing || step < 2) return; const upd = computeDraw(EV); if (!upd) return;
+  drawing = true; try { await Store.update(upd); } finally { drawing = false; }
+}
+document.addEventListener("keydown", (e) => {
+  if (e.key === " " || e.key === "Enter" || e.key === "ArrowRight") { e.preventDefault(); forceEinlass = false; draw(); }
+  if (e.key === "q" || e.key === "Q") { forceEinlass = !forceEinlass; render(); }
+  if (e.key === "f" || e.key === "F") { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen().catch(() => {}); }
+});
+</script>
+</body>
+</html>

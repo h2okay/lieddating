@@ -1,0 +1,27 @@
+@import url("https://fonts.googleapis.com/css2?family=Shrikhand&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&display=swap");
+:root{--ink:#16122B;--panel:#211B3D;--panel2:#2A2350;--line:#3B3266;--text:#F3EEFF;--muted:#A89FCC;--amber:#FFB547;--teal:#46D3C3;--pink:#FF4F8B;--ok:#7BE38A;--dark:#1A1330}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--ink);color:var(--text);font:16px/1.5 "DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-tap-highlight-color:transparent}
+.display{font-family:Shrikhand,Georgia,serif;font-weight:400;line-height:1.1;text-wrap:balance}
+.muted{color:var(--muted)}
+.plabel{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.heart{color:var(--pink)}
+.m{color:var(--teal)}.w{color:var(--amber)}
+p{margin:0}
+.btn{appearance:none;border:1px solid var(--line);border-radius:14px;padding:12px 16px;font:inherit;font-weight:700;cursor:pointer;background:var(--panel2);color:var(--text)}
+.btn.primary{background:var(--amber);color:var(--dark);border-color:transparent}
+.btn.ghost{background:transparent}
+.btn.small{padding:7px 11px;font-size:13px;border-radius:10px}
+.btn.danger{color:#FF8A8A;border-color:rgba(255,138,138,.4)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn:focus-visible,input:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+input[type=text]{width:100%;padding:13px 14px;border-radius:12px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font:inherit;font-size:17px}
+label{font-size:13px;color:var(--muted);display:block;margin-bottom:6px}
+.pill{display:inline-block;padding:4px 10px;border-radius:999px;background:var(--panel2);border:1px solid var(--line);font-size:13px;font-variant-numeric:tabular-nums}
+.pill.good{border-color:rgba(123,227,138,.5);color:var(--ok)}
+.pill.warn{border-color:rgba(255,181,71,.6);color:var(--amber)}
+.demo-banner{background:var(--amber);color:var(--dark);font-size:13px;font-weight:700;text-align:center;padding:6px 12px}
+.fade{animation:fadeup .6s both}
+@keyframes fadeup{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}

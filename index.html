@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#16122B">
+<title>Lieddating</title>
+<link rel="stylesheet" href="style.css">
+<style>
+html,body{height:100%}
+body{display:flex;flex-direction:column;overscroll-behavior:none}
+#app{flex:1;display:flex;flex-direction:column;gap:16px;padding:calc(20px + env(safe-area-inset-top,0px)) 18px calc(18px + env(safe-area-inset-bottom,0px));max-width:480px;width:100%;margin:0 auto;min-height:0}
+.logo{font-family:Shrikhand,Georgia,serif;font-size:30px;line-height:1;color:var(--amber)}
+.logo span{color:var(--pink)}
+.row{display:grid;grid-template-columns:1fr 92px;gap:10px}
+.seg{display:grid;grid-template-columns:1fr;gap:10px}
+.seg .btn{padding:16px}
+.seg .btn[aria-pressed="true"]{background:var(--teal);color:#0E1E1C;border-color:transparent}
+.hint{font-size:13px;color:var(--amber)}
+.grow{flex:1}
+.top{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.progress{height:6px;border-radius:3px;background:var(--panel2);overflow:hidden}
+.progress i{display:block;height:100%;background:var(--amber);transition:width .2s}
+.deck{flex:1;position:relative;min-height:260px}
+.card{position:absolute;inset:0;border-radius:26px;padding:24px;display:flex;flex-direction:column;justify-content:flex-end;gap:6px;touch-action:none;user-select:none;-webkit-user-select:none;cursor:grab;box-shadow:0 12px 32px rgba(0,0,0,.4)}
+.card .t{font-family:Shrikhand,Georgia,serif;font-size:clamp(26px,8vw,34px);line-height:1.1;text-wrap:balance}
+.card .a{opacity:.92;font-size:17px}
+.card .cat{position:absolute;top:20px;right:20px;font-size:12px;padding:3px 10px;border-radius:999px;background:rgba(0,0,0,.25)}
+.stamp{position:absolute;top:22px;left:20px;padding:4px 12px;border:3px solid currentColor;border-radius:8px;font-weight:700;letter-spacing:.08em;opacity:0;font-size:20px}
+.stamp.like{color:var(--ok);transform:rotate(-12deg)}
+.stamp.nope{color:#fff;left:auto;right:20px;top:56px;transform:rotate(12deg)}
+.swipebar{display:flex;justify-content:center;align-items:center;gap:26px}
+.roundbtn{width:70px;height:70px;border-radius:50%;font-size:26px;padding:0}
+.roundbtn.like{color:var(--pink)}
+.undo{width:48px;height:48px;font-size:18px;border-radius:50%;padding:0;color:var(--muted)}
+.center{flex:1;display:flex;flex-direction:column;gap:14px;justify-content:center;text-align:center;align-items:center}
+.namecard{background:var(--panel2);border:1px solid var(--line);border-radius:18px;padding:16px 22px}
+.namecard b{font-size:26px;display:block}
+.linkbtn{appearance:none;background:none;border:0;color:var(--muted);font:inherit;font-size:12px;text-decoration:underline;cursor:pointer}
+</style>
+</head>
+<body>
+<div id="banner"></div>
+<main id="app"></main>
+<script src="lib/firebase-app-compat.js"></script>
+<script src="lib/firebase-database-compat.js"></script>
+<script src="config.js"></script>
+<script src="songs.js"></script>
+<script src="app.js"></script>
+<script>
+const { SONGS, SONG, Store, shuffle, esc, newId, CFG } = LD;
+const MIN = CFG.minLikes || 10;
+const KEY = "ld-me-" + (CFG.eventId || "abend-1");
+let EV = {};
+let tmpG = null;
+let me = load() || { phase: "checkin" };
+
+function load() { try { return JSON.parse(localStorage.getItem(KEY)); } catch (e) { return null; } }
+function save() { try { localStorage.setItem(KEY, JSON.stringify(me)); } catch (e) {} }
+const $ = (s) => document.querySelector(s);
+
+if (Store.mode === "demo") $("#banner").innerHTML = `<div class="demo-banner">Demo-Modus: keine Firebase-Verbindung eingerichtet</div>`;
+Store.subscribe((ev) => { EV = ev; if (me.phase === "checkin") dupHint(); });
+
+function render() {
+  const el = $("#app");
+  if (me.phase === "checkin") {
+    el.innerHTML = `
+      <div class="logo">Lied<span>dating</span></div>
+      <div class="display" style="font-size:26px">Schön, dass du da bist!</div>
+      <p class="muted">Kein Account, keine App. Nur dein Name, damit wir dich auf der Leinwand aufrufen können.</p>
+      <div class="row">
+        <div><label for="first">Vorname</label><input id="first" type="text" maxlength="20" autocomplete="given-name" autocapitalize="words"></div>
+        <div><label for="initial">Nachname</label><input id="initial" type="text" maxlength="3" placeholder="M" autocapitalize="characters" autocomplete="off"></div>
+      </div>
+      <p class="muted" style="font-size:13px;margin-top:-6px">Vom Nachnamen nur der erste Buchstabe. Auf der Leinwand steht dann z.&nbsp;B. „Lena M.“</p>
+      <div class="hint" id="dup"></div>
+      <div class="seg">
+        <button class="btn" data-act="g" data-g="w" aria-pressed="${tmpG === "w"}">Ich möchte mich als Frau anmelden</button>
+        <button class="btn" data-act="g" data-g="m" aria-pressed="${tmpG === "m"}">Ich möchte mich als Mann anmelden</button>
+      </div>
+      <div class="grow"></div>
+      <p class="muted" style="font-size:12px;text-align:center">Gespeichert werden nur Vorname, Anfangsbuchstabe und deine Herzen. Nach dem Abend wird alles gelöscht.</p>
+      <button class="btn primary" id="go" data-act="checkin">Los geht's</button>`;
+    ["first", "initial"].forEach((id) => $("#" + id).addEventListener("input", () => { dupHint(); validate(); }));
+    validate(); return;
+  }
+  if (me.phase === "swipe" || me.phase === "more") {
+    const sid = me.deck[me.idx], s = SONG[sid];
+    const total = me.deck.length, likes = me.likes.length;
+    const head = me.phase === "more"
+      ? `<div class="display" style="font-size:22px">Noch ${Math.max(0, MIN - likes)} ${MIN - likes === 1 ? "Herz" : "Herzen"}!</div>
+         <p class="muted" style="margin-top:-8px">Mindestens ${MIN} Songs, damit du sicher ein Match bekommst. Hier nochmal die, die du abgelehnt hast.</p>`
+      : `<div class="plabel">Würdest du das im Duett singen?</div>`;
+    el.innerHTML = `
+      <div class="top"><span class="plabel">${me.phase === "more" ? "Zweite Runde · " : ""}${me.idx + 1} / ${total}</span><span class="pill"><span class="heart">♥</span> ${likes}</span></div>
+      <div class="progress"><i style="width:${(me.idx / total) * 100}%"></i></div>
+      ${head}
+      <div class="deck"><div class="card" id="card" style="background:linear-gradient(160deg,hsl(${s.hue} 70% 58%),hsl(${(s.hue + 40) % 360} 55% 22%))">
+        <span class="stamp like" id="stL">JA</span><span class="stamp nope" id="stN">NÖ</span>
+        <span class="cat">${esc(s.cat)}</span>
+        <div class="t">${esc(s.t)}</div><div class="a">${esc(s.a)}</div></div></div>
+      <div class="swipebar">
+        <button class="btn undo" data-act="undo" aria-label="Zurück" ${me.hist.length && me.phase === "swipe" ? "" : "disabled"}>↶</button>
+        <button class="btn roundbtn" data-act="nope" aria-label="Nein">✕</button>
+        <button class="btn roundbtn like" data-act="like" aria-label="Ja">♥</button>
+        <span style="width:48px"></span>
+      </div>
+      ${me.phase === "more" && likes >= MIN ? `<button class="btn primary" data-act="finish">Fertig</button>` : ""}`;
+    bindDrag(); return;
+  }
+  // done
+  el.innerHTML = `
+    <div class="logo">Lied<span>dating</span></div>
+    <div class="center">
+      <div class="plabel">Du bist dabei</div>
+      <div class="display" style="font-size:40px">Handy weg!</div>
+      <p>Ab jetzt läuft alles über die <b>Leinwand</b>. Wenn dein Name dort auftaucht, ab auf die Bühne.</p>
+      <div class="namecard"><span class="plabel">So heißt du auf der Leinwand</span><b class="${me.g}">${esc(me.first)} ${esc(me.initial)}.</b></div>
+      <p class="muted">Du hast ${me.likes.length} von ${SONGS.length} Songs ein Herz gegeben.</p>
+    </div>
+    <button class="linkbtn" data-act="restart">Falsches Handy? Neu einchecken</button>`;
+}
+
+function clean() {
+  const f = ($("#first").value || "").trim().replace(/\s+/g, " ");
+  const i = ($("#initial").value || "").trim().replace(/[^A-Za-zÄÖÜäöüß]/g, "");
+  return { first: f ? f[0].toUpperCase() + f.slice(1) : "", initial: i ? i[0].toUpperCase() + i.slice(1).toLowerCase() : "" };
+}
+function validate() { const c = clean(); $("#go").disabled = !(c.first && c.initial && tmpG); }
+function dupHint() {
+  const el = $("#dup"); if (!el) return; const c = clean();
+  const dup = c.first && c.initial && Object.values(EV.people || {}).some((p) => p.first === c.first && p.initial === c.initial);
+  el.textContent = dup ? `Es gibt schon eine:n ${c.first} ${c.initial}. – nimm gern zwei Buchstaben vom Nachnamen.` : "";
+}
+
+function decide(like) {
+  const sid = me.deck[me.idx];
+  if (like) me.likes.push(sid); else me.nos.push(sid);
+  me.hist.push(sid); me.idx++;
+  if (me.idx >= me.deck.length) {
+    if (me.likes.length >= MIN) return finish();
+    me.phase = "more"; me.deck = shuffle(me.nos); me.nos = []; me.idx = 0; me.hist = [];
+  }
+  save(); render();
+}
+function undo() {
+  const sid = me.hist.pop(); if (!sid) return;
+  me.likes = me.likes.filter((x) => x !== sid); me.nos = me.nos.filter((x) => x !== sid); me.idx--; save(); render();
+}
+function finish() {
+  const likes = {}; me.likes.forEach((s) => (likes[s] = true));
+  Store.update({ ["people/" + me.pid + "/likes"]: likes, ["people/" + me.pid + "/ready"]: true });
+  me.phase = "done"; save(); render();
+}
+function fly(like) {
+  const c = $("#card");
+  if (c && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    c.style.transition = "transform .22s ease-in";
+    c.style.transform = `translateX(${like ? 460 : -460}px) rotate(${like ? 25 : -25}deg)`;
+    setTimeout(() => decide(like), 190);
+  } else decide(like);
+}
+function bindDrag() {
+  const c = $("#card"); if (!c) return; let x0 = null, dx = 0;
+  const stamps = (v) => { $("#stL").style.opacity = Math.max(0, v / 90); $("#stN").style.opacity = Math.max(0, -v / 90); };
+  c.onpointerdown = (e) => { x0 = e.clientX; dx = 0; c.setPointerCapture(e.pointerId); c.style.transition = "none"; };
+  c.onpointermove = (e) => { if (x0 == null) return; dx = e.clientX - x0; c.style.transform = `translateX(${dx}px) rotate(${dx / 14}deg)`; stamps(dx); };
+  c.onpointerup = c.onpointercancel = () => {
+    if (x0 == null) return; x0 = null;
+    if (Math.abs(dx) > 80) fly(dx > 0); else { c.style.transition = "transform .2s"; c.style.transform = ""; stamps(0); }
+  };
+}
+
+const ACT = {
+  g: (b) => { tmpG = b.dataset.g; document.querySelectorAll("[data-act=g]").forEach((x) => x.setAttribute("aria-pressed", x === b)); validate(); },
+  checkin: () => {
+    const c = clean(); if (!c.first || !c.initial || !tmpG) return;
+    me = { phase: "swipe", pid: newId(), first: c.first, initial: c.initial, g: tmpG, deck: shuffle(SONGS.map((s) => s.id)), idx: 0, likes: [], nos: [], hist: [] };
+    Store.update({ ["people/" + me.pid]: { first: c.first, initial: c.initial, g: tmpG, ready: false, sung: 0, joinedAt: Date.now() } });
+    save(); render();
+  },
+  like: () => fly(true), nope: () => fly(false), undo, finish,
+  restart: () => { if (confirm("Wirklich neu einchecken? Deine Herzen gehen dabei verloren.")) { if (me.pid) Store.update({ ["people/" + me.pid]: null }); me = { phase: "checkin" }; save(); render(); } },
+};
+document.addEventListener("click", (e) => { const b = e.target.closest("[data-act]"); if (!b || b.disabled) return; ACT[b.dataset.act](b); });
+document.addEventListener("keydown", (e) => { if (me.phase !== "swipe" && me.phase !== "more") return; if (e.key === "ArrowRight") fly(true); if (e.key === "ArrowLeft") fly(false); });
+render();
+</script>
+</body>
+</html>
