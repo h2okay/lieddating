@@ -52,7 +52,7 @@ footer b{color:var(--text)}
 <script src="songs.js"></script>
 <script src="app.js"></script>
 <script>
-const { SONG, Store, analyze, computeDraw, esc, CFG } = LD;
+const { SONG, Store, analyze, computeDraw, castOf, esc, CFG } = LD;
 const $ = (s) => document.querySelector(s);
 const JOIN_URL = new URL("index.html", location.href).href.split("?")[0];
 const qrSvg = (() => { const q = qrcode(0, "M"); q.addData(JOIN_URL); q.make(); return q.createSvgTag({ cellSize: 4, margin: 1, scalable: true }); })();
@@ -80,7 +80,6 @@ Store.subscribe((ev) => {
 function render() {
   const A = analyze(EV), cur = A.current;
   const checked = A.all.length, ready = A.all.filter((p) => p.ready).length;
-  const w = A.all.filter((p) => p.g === "w").length, m = A.all.filter((p) => p.g === "m").length;
 
   if (!cur || forceEinlass) {
     const chips = A.all.sort((a, b) => (a.joinedAt || 0) - (b.joinedAt || 0))
@@ -91,11 +90,12 @@ function render() {
         <div><div class="logo">Lied<span>dating</span></div>
           <h1 style="margin-top:2vh">Scannen, swipen,<br>Handy weg.</h1></div>
       </div>
-      <div class="label" style="margin-top:3vh">${checked} eingecheckt · ${w} Frauen · ${m} Männer</div>
+      <div class="label" style="margin-top:3vh">${checked} eingecheckt</div>
       <div class="chips">${chips}</div>`;
   } else {
     const s = SONG[cur.song] || { t: cur.song, a: "" };
-    let h = `<div class="label">Duett ${cur.k}${cur.joker ? " · Joker" : ""}</div>
+    const istTrio = cur.type === "trio";
+    let h = `<div class="label">${istTrio ? "Nummer" : "Duett"} ${cur.k}${istTrio ? " · Trio" : ""}${cur.joker ? " · Joker" : ""}</div>
       <div class="song ${step === 0 ? "fade" : ""}">${esc(s.t)}</div><div class="artist">${esc(s.a)}</div>`;
     if (step < 2) {
       h += cur.joker
@@ -103,7 +103,8 @@ function render() {
         : `<div class="teaser fade">${cur.likesW} ${cur.likesW === 1 ? "Frau" : "Frauen"} und ${cur.likesM} ${cur.likesM === 1 ? "Mann" : "Männer"} haben diesem Song ein Herz gegeben.</div>`;
       if (step === 1) h += `<div class="drum">… und das Match ist</div>`;
     } else {
-      h += `<div class="names ${first ? "" : "pop"}"><span class="w">${esc(cur.w.name)}</span><span class="heart">♥</span><span class="m">${esc(cur.m.name)}</span></div>`;
+      const namen = castOf(cur).map((c) => `<span class="${c.g}">${esc(c.name)}</span>`).join(`<span class="heart">♥</span>`);
+      h += `<div class="names ${first ? "" : "pop"}">${namen}</div>`;
       if (cur.joker) h += `<div class="joker">Joker-Runde: Kein gemeinsamer Song mehr frei, einer von euch mag ihn.</div>`;
     }
     $("#stage").innerHTML = h;
@@ -116,9 +117,11 @@ function render() {
   $("#foot").innerHTML = `<div class="left"><div class="qrsmall">${qrSvg}</div><span>Noch nicht dabei? Scannen &amp; swipen.</span></div><div>${status}</div>`;
 }
 
-async function draw() {
+function draw() {
   if (drawing || step < 2) return; const upd = computeDraw(EV); if (!upd) return;
-  drawing = true; try { await Store.update(upd); } finally { drawing = false; }
+  // Offline antwortet Firebase erst später; der lokale Stand ist sofort da.
+  drawing = true; setTimeout(() => (drawing = false), 1200);
+  Promise.resolve(Store.update(upd)).catch((e) => console.warn(e));
 }
 document.addEventListener("keydown", (e) => {
   if (e.key === " " || e.key === "Enter" || e.key === "ArrowRight") { e.preventDefault(); forceEinlass = false; draw(); }

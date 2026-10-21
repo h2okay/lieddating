@@ -39,6 +39,9 @@ ol.hist{margin:0;padding-left:24px;display:flex;flex-direction:column;gap:4px;fo
 .links{display:flex;flex-wrap:wrap;gap:8px;font-size:13px}
 .links a{color:var(--teal)}
 .row-actions{display:flex;gap:4px;justify-content:flex-end}
+.namebtn{appearance:none;background:none;border:0;padding:0;font:inherit;font-weight:700;cursor:pointer;text-align:left}
+.namebtn:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+tr.sel td{background:rgba(255,181,71,.12)}
 </style>
 </head>
 <body>
@@ -56,7 +59,27 @@ ol.hist{margin:0;padding-left:24px;display:flex;flex-direction:column;gap:4px;fo
       <button class="btn" data-act="redraw">Neu ziehen</button>
       <button class="btn ghost" data-act="undo">Letztes Duett zurücknehmen</button>
     </div>
-    <p class="muted" style="font-size:13px">„Neu ziehen“ nimmt das aktuelle Duett zurück und zieht sofort ein anderes, z.&nbsp;B. wenn jemand gerade nicht da ist. Wer länger weg ist: unten auf „abwesend“ setzen.</p>
+    <div>
+      <span class="plabel">Typ des nächsten Duetts</span>
+      <div class="controls" id="types" style="margin-top:6px">
+        <button class="btn small" data-act="type" data-type="auto">Automatisch</button>
+        <button class="btn small" data-act="type" data-type="mixed">Gemischt</button>
+        <button class="btn small" data-act="type" data-type="w">Frauen</button>
+        <button class="btn small" data-act="type" data-type="m">Männer</button>
+        <button class="btn small" data-act="type" data-type="trio">Trio</button>
+      </div>
+    </div>
+    <p class="muted" style="font-size:13px" id="plan"></p>
+    <div id="pickbox" hidden>
+      <span class="plabel">Von Hand</span>
+      <div class="controls" style="margin-top:6px">
+        <span class="pill" id="picknames"></span>
+        <button class="btn small primary" data-act="manual">Diese singen als Nächstes</button>
+        <button class="btn small ghost" data-act="pickclear">Auswahl löschen</button>
+      </div>
+    </div>
+    <p class="muted" style="font-size:13px">Namen in der Liste unten antippen, um 2 oder 3 Personen selbst zu bestimmen – auch jemand, der schon gesungen hat (Einspringer). Den Song sucht die App dann passend aus.</p>
+    <p class="muted" style="font-size:13px">„Neu ziehen“ nimmt das aktuelle Duett zurück und zieht sofort ein anderes, z.&nbsp;B. wenn jemand gerade nicht da ist. Wer länger weg ist: unten auf „abwesend“ setzen. Nach jedem Zug steht der Typ wieder auf „Automatisch“.</p>
   </section>
   <div class="grid">
     <section class="panel">
@@ -84,7 +107,9 @@ ol.hist{margin:0;padding-left:24px;display:flex;flex-direction:column;gap:4px;fo
 <script src="songs.js"></script>
 <script src="app.js"></script>
 <script>
-const { SONGS, SONG, Store, analyze, computeDraw, computeUndo, botUpdates, esc, displayName } = LD;
+const { SONGS, SONG, Store, analyze, computeDraw, computeManual, computeUndo, botUpdates, castOf, esc, displayName } = LD;
+let forceType = null;
+let pick = [];
 const $ = (s) => document.querySelector(s);
 let EV = {}, busy = false;
 if (Store.mode === "demo") $("#banner").innerHTML = `<div class="demo-banner">Demo-Modus: keine Firebase-Verbindung eingerichtet. Öffne Leinwand und Anmeldung im selben Browser, um zu testen.</div>`;
@@ -105,24 +130,49 @@ function render() {
 
   const c = A.current;
   $("#now").innerHTML = c
-    ? `<div class="plabel">Duett ${c.k}${c.joker ? " · Joker" : ""}</div><div class="display">${esc(SONG[c.song]?.t || c.song)}</div>
-       <div class="names"><span class="w">${esc(c.w.name)}</span> <span class="heart">♥</span> <span class="m">${esc(c.m.name)}</span></div>`
+    ? `<div class="plabel">${c.type === "trio" ? "Nummer" : "Duett"} ${c.k}${c.type === "trio" ? " · Trio" : ""}${c.joker ? " · Joker" : ""}</div><div class="display">${esc(SONG[c.song]?.t || c.song)}</div>
+       <div class="names">${castOf(c).map((x) => `<span class="${x.g}">${esc(x.name)}</span>`).join(` <span class="heart">♥</span> `)}</div>`
     : `<p class="muted">Noch kein Duett. Die Leinwand zeigt den Einlass mit QR-Code.</p>`;
-  document.querySelectorAll("[data-act=draw],[data-act=redraw]").forEach((b) => (b.disabled = busy || !A.poolW.length || !A.poolM.length));
+
+  // Planzeile und Typ-Knöpfe
+  const pl = A.plan, nW = A.poolW.length, nM = A.poolM.length;
+  const teile = [];
+  if (pl.mixed) teile.push(`${pl.mixed} gemischte`);
+  if (pl.same) teile.push(`${pl.same} ${pl.sameG === "w" ? "Frauen" : "Männer"}-Duette`);
+  if (pl.trio) teile.push("1 Trio zum Schluss");
+  $("#plan").innerHTML = A.allSung || !pl.total
+    ? `Alle haben gesungen. Weitere Züge sind Zugaben.`
+    : `Noch ohne Duett: <b>${nW}</b> Frauen · <b>${nM}</b> Männer. Geplant: ${teile.join(", ") || "–"}.`;
+  document.querySelectorAll("[data-act=type]").forEach((b) => {
+    const t = b.dataset.type;
+    b.setAttribute("aria-pressed", (forceType || "auto") === t);
+    b.disabled = busy || (t === "mixed" && (!nW || !nM)) || (t === "w" && nW < 2) || (t === "m" && nM < 2) || (t === "trio" && pl.total < 3);
+    b.classList.toggle("primary", (forceType || "auto") === t);
+  });
+  document.querySelectorAll("[data-act=draw],[data-act=redraw]").forEach((b) => (b.disabled = busy || A.pool.length < 2));
   document.querySelector("[data-act=undo]").disabled = busy || !A.history.length;
   document.querySelector("[data-act=redraw]").disabled ||= !A.history.length;
 
   const rows = [...A.all].sort((a, b) => a.g.localeCompare(b.g) || a.first.localeCompare(b.first));
   $("#people").innerHTML = `<tr><th>Name</th><th>Status</th><th class="n">♥</th><th></th></tr>` + rows.map((p) => {
     const st = !p.ready ? `<span class="st wait">swipt</span>` : p.sung ? `<span class="st sung">gesungen${p.sung > 1 ? " ×" + p.sung : ""}</span>` : `<span class="st ready">im Pool</span>`;
-    return `<tr class="${p.away ? "away" : ""}"><td class="${p.g}">${esc(displayName(p))}${p.test ? ` <span class="tag">Test</span>` : ""}</td><td>${p.away ? `<span class="st">abwesend</span>` : st}</td><td class="n">${p.likes.size}</td>
+    const sel = pick.includes(p.id);
+    return `<tr class="${p.away ? "away" : ""} ${sel ? "sel" : ""}"><td><button class="namebtn ${p.g}" data-act="pick" data-id="${p.id}" aria-pressed="${sel}">${sel ? "✓ " : ""}${esc(displayName(p))}</button>${p.test ? ` <span class="tag">Test</span>` : ""}</td><td>${p.away ? `<span class="st">abwesend</span>` : st}</td><td class="n">${p.likes.size}</td>
       <td><div class="row-actions"><button class="btn small ghost" data-act="away" data-id="${p.id}">${p.away ? "zurück" : "abwesend"}</button>
       <button class="btn small ghost danger" data-act="del" data-id="${p.id}" aria-label="entfernen">✕</button></div></td></tr>`;
   }).join("") || `<tr><td colspan="4" class="muted">Noch niemand eingecheckt.</td></tr>`;
 
   $("#hist").innerHTML = A.history.length
-    ? `<ol class="hist">${A.history.map((h) => `<li>${esc(SONG[h.song]?.t || h.song)}: <span class="w">${esc(h.w.name)}</span> &amp; <span class="m">${esc(h.m.name)}</span>${h.joker ? `<span class="tag">Joker</span>` : ""}</li>`).join("")}</ol>`
+    ? `<ol class="hist">${A.history.map((h) => `<li>${esc(SONG[h.song]?.t || h.song)}: ${castOf(h).map((x) => `<span class="${x.g}">${esc(x.name)}</span>`).join(" &amp; ")}${h.type === "trio" ? `<span class="tag">Trio</span>` : ""}${h.joker ? `<span class="tag">Joker</span>` : ""}</li>`).join("")}</ol>`
     : `<p class="muted">Noch leer.</p>`;
+
+  const box = $("#pickbox");
+  box.hidden = pick.length === 0;
+  if (pick.length) {
+    const namen = pick.map((id) => displayName(A.all.find((p) => p.id === id))).join(" · ");
+    $("#picknames").textContent = `${pick.length} ausgewählt: ${namen}`;
+    document.querySelector("[data-act=manual]").disabled = busy || pick.length < 2 || pick.length > 3;
+  }
 
   const cnt = SONGS.map((s) => ({ s, w: A.active.filter((p) => p.g === "w" && p.likes.has(s.id)).length, m: A.active.filter((p) => p.g === "m" && p.likes.has(s.id)).length }))
     .sort((a, b) => b.w + b.m - (a.w + a.m));
@@ -133,9 +183,20 @@ function render() {
      <td class="n">${x.m}<span class="bar" style="width:${(x.m / max) * 40}px;background:var(--teal)"></span></td></tr>`).join("");
 }
 
-async function run(fn) { if (busy) return; busy = true; render(); try { await fn(); } finally { busy = false; render(); } }
+// Offline bestätigt Firebase den Schreibvorgang erst später. Der lokale Stand ist
+// sofort da, deshalb geben wir die Knöpfe nach spätestens 1,5 s wieder frei.
+async function run(fn) {
+  if (busy) return; busy = true; render();
+  try { await Promise.race([fn(), new Promise((r) => setTimeout(r, 1500))]); }
+  catch (e) { console.warn(e); }
+  finally { busy = false; render(); }
+}
 const ACT = {
-  draw: () => run(async () => { const u = computeDraw(EV); if (u) await Store.update(u); }),
+  draw: () => run(async () => { const u = computeDraw(EV, forceType); forceType = null; if (u) await Store.update(u); }),
+  type: (b) => { forceType = b.dataset.type === "auto" ? null : b.dataset.type; render(); },
+  pick: (b) => { const id = b.dataset.id; pick = pick.includes(id) ? pick.filter((x) => x !== id) : [...pick, id].slice(-3); render(); },
+  pickclear: () => { pick = []; render(); },
+  manual: () => run(async () => { const u = computeManual(EV, pick); pick = []; if (u) await Store.update(u); }),
   undo: () => run(async () => { const u = computeUndo(EV); if (u) await Store.update(u); }),
   redraw: () => run(async () => {
     const u = computeUndo(EV); if (!u) return;
@@ -144,7 +205,7 @@ const ACT = {
     // gleiches Paar nicht direkt wieder ziehen: beide kurz als abwesend markieren
     const tmp = { ["people/" + last.w.id + "/away"]: true, ["people/" + last.m.id + "/away"]: true };
     const probe = JSON.parse(JSON.stringify(EV)); for (const [k, v] of Object.entries(tmp)) { const [, id] = k.split("/"); if (probe.people?.[id]) probe.people[id].away = true; }
-    const d = computeDraw(probe) || computeDraw(EV);
+    const d = computeDraw(probe, forceType) || computeDraw(EV, forceType); forceType = null;
     if (d) await Store.update(d);
   }),
   away: (b) => { const p = (EV.people || {})[b.dataset.id]; if (p) Store.update({ ["people/" + b.dataset.id + "/away"]: p.away ? null : true }); },

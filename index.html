@@ -60,7 +60,21 @@ function save() { try { localStorage.setItem(KEY, JSON.stringify(me)); } catch (
 const $ = (s) => document.querySelector(s);
 
 if (Store.mode === "demo") $("#banner").innerHTML = `<div class="demo-banner">Demo-Modus: keine Firebase-Verbindung eingerichtet</div>`;
-Store.subscribe((ev) => { EV = ev; if (me.phase === "checkin") dupHint(); });
+let repariert = false;
+Store.subscribe((ev) => {
+  EV = ev;
+  if (me.phase === "checkin") dupHint();
+  // Falls das "Fertig" offline verloren ging: Herzen einmal nachreichen.
+  // Nur wenn der Eintrag noch existiert – gelöschte Leute kommen nicht zurück.
+  if (!repariert && me.phase === "done" && me.pid) {
+    const eintrag = (ev.people || {})[me.pid];
+    if (eintrag && !eintrag.ready) {
+      repariert = true;
+      const likes = {}; (me.likes || []).forEach((s) => (likes[s] = true));
+      Store.update({ ["people/" + me.pid + "/likes"]: likes, ["people/" + me.pid + "/ready"]: true });
+    }
+  }
+});
 
 function render() {
   const el = $("#app");

@@ -1,6 +1,6 @@
 // Songkatalog für Lieddating.
 // Jede Zeile: [Titel, Interpret:in, Kategorie]
-// SONGS = aktiv (Vorschlag: 50 Stück). RESERVE = 20 weitere Kandidaten.
+// SONGS = aktiv (aktuell 52 Stück). RESERVE = weitere Kandidaten.
 // Tauschen: Zeile einfach von einer Liste in die andere verschieben.
 // Tipp: Vor dem Abend nicht mehr ändern, wenn schon Leute geswipt haben.
 
@@ -11,10 +11,8 @@ window.SONGS_RAW = [
   ["Don't Go Breaking My Heart", "Elton John & Kiki Dee", "Duett"],
   ["I Got You Babe", "Sonny & Cher", "Duett"],
   ["(I've Had) The Time of My Life", "Bill Medley & Jennifer Warnes", "Duett"],
-  ["Summer Nights", "John Travolta & Olivia Newton-John", "Duett"],
   ["You're the One That I Want", "John Travolta & Olivia Newton-John", "Duett"],
   ["Ain't No Mountain High Enough", "Marvin Gaye & Tammi Terrell", "Duett"],
-  ["Somethin' Stupid", "Frank & Nancy Sinatra", "Duett"],
   ["Señorita", "Shawn Mendes & Camila Cabello", "Duett"],
   ["Don't You Want Me", "The Human League", "Duett"],
   ["Endless Love", "Diana Ross & Lionel Richie", "Duett"],
@@ -31,16 +29,17 @@ window.SONGS_RAW = [
   ["Irgendwie, irgendwo, irgendwann", "Nena & Kim Wilde", "Deutsch"],
   ["Vom selben Stern", "Ich + Ich", "Deutsch"],
   ["Männer", "Herbert Grönemeyer", "Deutsch"],
-  ["Skandal im Sperrbezirk", "Spider Murphy Gang", "Deutsch"],
   ["Verdammt, ich lieb' dich", "Matthias Reim", "Deutsch"],
   ["Cordula Grün", "Die Draufgänger", "Deutsch"],
   ["Ein Stern (der deinen Namen trägt)", "DJ Ötzi & Nik P.", "Deutsch"],
   ["Lieblingsmensch", "Namika", "Deutsch"],
   ["Auf uns", "Andreas Bourani", "Deutsch"],
   ["Durch den Monsun", "Tokio Hotel", "Deutsch"],
+  ["Griechischer Wein", "Udo Jürgens", "Deutsch"],
+  ["Ohne dich (schlaf ich heut Nacht nicht ein)", "Münchener Freiheit", "Deutsch"],
+  ["Marmor, Stein und Eisen bricht", "Drafi Deutscher", "Deutsch"],
   // Mitgröl-Klassiker
   ["Mr. Brightside", "The Killers", "Klassiker"],
-  ["Bohemian Rhapsody", "Queen", "Klassiker"],
   ["Don't Stop Me Now", "Queen", "Klassiker"],
   ["Dancing Queen", "ABBA", "Klassiker"],
   ["Mamma Mia", "ABBA", "Klassiker"],
@@ -58,26 +57,21 @@ window.SONGS_RAW = [
   ["Toxic", "Britney Spears", "Klassiker"],
   ["...Baby One More Time", "Britney Spears", "Klassiker"],
   ["Everybody (Backstreet's Back)", "Backstreet Boys", "Klassiker"],
+  ["Angels", "Robbie Williams", "Klassiker"],
+  ["Summer of '69", "Bryan Adams", "Klassiker"],
+  ["Rolling in the Deep", "Adele", "Klassiker"],
 ];
 
 window.RESERVE_RAW = [
-  ["Picture", "Kid Rock & Sheryl Crow", "Duett"],
   ["Up Where We Belong", "Joe Cocker & Jennifer Warnes", "Duett"],
   ["It Takes Two", "Rod Stewart & Tina Turner", "Duett"],
-  ["Where the Wild Roses Grow", "Nick Cave & Kylie Minogue", "Duett"],
   ["Über den Wolken", "Reinhard Mey", "Deutsch"],
-  ["Marmor, Stein und Eisen bricht", "Drafi Deutscher", "Deutsch"],
-  ["Griechischer Wein", "Udo Jürgens", "Deutsch"],
-  ["Ohne dich (schlaf ich heut Nacht nicht ein)", "Münchener Freiheit", "Deutsch"],
   ["Wind of Change", "Scorpions", "Deutsch"],
   ["Aloha heja he", "Achim Reichel", "Deutsch"],
   ["Zombie", "The Cranberries", "Klassiker"],
-  ["Summer of '69", "Bryan Adams", "Klassiker"],
   ["Hey Ya!", "OutKast", "Klassiker"],
-  ["Rolling in the Deep", "Adele", "Klassiker"],
   ["I'm Gonna Be (500 Miles)", "The Proclaimers", "Klassiker"],
   ["Take Me Home, Country Roads", "John Denver", "Klassiker"],
-  ["Angels", "Robbie Williams", "Klassiker"],
   ["Dancing in the Moonlight", "Toploader", "Klassiker"],
   ["Complicated", "Avril Lavigne", "Klassiker"],
   ["Uptown Funk", "Mark Ronson & Bruno Mars", "Klassiker"],

@@ -6,25 +6,15 @@
 //    Solange hier null steht, läuft die App im DEMO-MODUS:
 //    Alles bleibt in diesem einen Browser (mehrere Tabs synchronisieren sich),
 //    Handys können NICHT mitmachen.
-
 window.FIREBASE_CONFIG = {
-
   apiKey: "AIzaSyDn-A7cuyJHmD9tjhzd79SEO9pnIVjexM4",
-
   authDomain: "lieddating.firebaseapp.com",
-
   databaseURL: "https://lieddating-default-rtdb.europe-west1.firebasedatabase.app",
-
   projectId: "lieddating",
-
   storageBucket: "lieddating.firebasestorage.app",
-
   messagingSenderId: "225483540381",
-
   appId: "1:225483540381:web:36c4a15a0dcbeb2b2ad174"
-
 };
-
 
 window.LIEDDATING = {
   // Name des Abends in der Datenbank. Für einen neuen Abend einfach ändern,
@@ -36,5 +26,3 @@ window.LIEDDATING = {
   teaserMs: 3500,
   drumMs: 1800,
 };
-
-

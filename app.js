@@ -55,6 +55,15 @@
   })();
 
   // ---------- Auswertung des Zustands ----------
+  // Plan für den restlichen Abend: wie viele gemischte, wie viele gleichgeschlechtliche
+  // Duette und ob am Ende ein Trio nötig ist (ungerade Gesamtzahl).
+  function planFor(w, m) {
+    const total = w + m, s = Math.abs(w - m), trio = total % 2 === 1;
+    const same = trio ? Math.max(0, Math.floor((s - 3) / 2)) : Math.floor(s / 2);
+    const mixed = Math.max(0, (total - 2 * same - (trio ? 3 : 0)) / 2);
+    return { total, trio, same, mixed, sameG: w > m ? "w" : "m" };
+  }
+
   function analyze(ev) {
     const all = Object.entries(ev.people || {}).map(([id, p]) => ({
       id, ...p, sung: p.sung || 0, likes: new Set(Object.keys(p.likes || {}).filter((s) => SONG[s])),
@@ -62,12 +71,14 @@
     const history = Object.values(ev.history || {}).sort((a, b) => a.k - b.k);
     const active = all.filter((p) => p.ready && !p.away);
     const used = new Set(history.map((h) => h.song));
-    const pool = (g) => {
-      const arr = active.filter((p) => p.g === g); if (!arr.length) return [];
-      const min = Math.min(...arr.map((p) => p.sung)); return arr.filter((p) => p.sung === min);
-    };
-    const allSung = active.length > 0 && active.every((p) => p.sung >= 1);
-    return { all, active, history, used, poolW: pool("w"), poolM: pool("m"), allSung, current: ev.current || null };
+    const fresh = active.filter((p) => p.sung === 0);
+    const zugabe = active.length > 0 && fresh.length === 0;
+    let base = fresh;
+    if (zugabe) { const min = Math.min(...active.map((p) => p.sung)); base = active.filter((p) => p.sung === min); }
+    const poolW = base.filter((p) => p.g === "w"), poolM = base.filter((p) => p.g === "m");
+    const allSung = active.length > 0 && fresh.length === 0;
+    return { all, active, history, used, pool: base, poolW, poolM, zugabe, allSung,
+             plan: planFor(poolW.length, poolM.length), current: ev.current || null };
   }
 
   function maxMatching(ms, ws, edge) {
@@ -83,74 +94,132 @@
     return owner.size;
   }
 
-  // Nächstes Duett bestimmen. Liefert Firebase-Updates oder null.
-  function computeDraw(ev) {
+  function buildDraw(A, members, song, joker, type) {
+    const k = A.history.length + 1;
+    const cast = [...members].sort((a, b) => (a.g === b.g ? 0 : a.g === "w" ? -1 : 1));
+    const d = {
+      k, song, joker, type, ts: Date.now(),
+      likesW: A.active.filter((p) => p.g === "w" && p.likes.has(song)).length,
+      likesM: A.active.filter((p) => p.g === "m" && p.likes.has(song)).length,
+      cast: cast.map((p) => ({ id: p.id, name: displayName(p), g: p.g })),
+    };
+    const upd = { ["history/d" + String(k).padStart(3, "0")]: d, current: d };
+    cast.forEach((p) => (upd["people/" + p.id + "/sung"] = p.sung + 1));
+    return upd;
+  }
+
+  // Duett von Hand: 2 oder 3 ausgewählte Personen, Song automatisch.
+  // Erlaubt auch Einspringer, die schon gesungen haben.
+  function computeManual(ev, ids) {
     const A = analyze(ev);
-    const ws = shuffle(A.poolW), ms = shuffle(A.poolM);
-    if (!ws.length || !ms.length) return null;
+    const members = ids.map((id) => A.all.find((p) => p.id === id)).filter(Boolean);
+    if (members.length < 2 || members.length > 3) return null;
+    let freeIds = SONGS.map((s) => s.id).filter((id) => !A.used.has(id));
+    if (!freeIds.length) freeIds = SONGS.map((s) => s.id);
+    const score = (s) => members.filter((p) => p.likes.has(s)).length;
+    const best = Math.max(...freeIds.map(score));
+    const song = shuffle(freeIds.filter((s) => score(s) === best))[0];
+    const type = members.length === 3 ? "trio" : (members[0].g === members[1].g ? members[0].g : "mixed");
+    return buildDraw(A, members, song, best < 2, type);
+  }
+
+  // Nächstes Duett bestimmen. force: null | "mixed" | "w" | "m" | "trio"
+  // Liefert Firebase-Updates oder null.
+  function computeDraw(ev, force) {
+    const A = analyze(ev);
+    const pool = shuffle(A.pool);
+    if (pool.length < 2) return null;
     let freeIds = SONGS.map((s) => s.id).filter((id) => !A.used.has(id));
     if (!freeIds.length) freeIds = SONGS.map((s) => s.id);
     const free = new Set(freeIds);
-    const common = (m, w) => [...m.likes].filter((s) => free.has(s) && w.likes.has(s));
+    const common = (a, b) => [...a.likes].filter((s) => free.has(s) && b.likes.has(s));
+    const W = pool.filter((p) => p.g === "w"), M = pool.filter((p) => p.g === "m");
+    const pk = (a, b) => [a.id, b.id].sort().join("|");
 
-    const edges = new Map(); // "m|w" -> Songs
-    for (const m of ms) for (const w of ws) { const c = common(m, w); if (c.length) edges.set(m.id + "|" + w.id, c); }
-    const edge = (m, w) => edges.has(m.id + "|" + w.id);
-    const deg = new Map();
-    for (const k of edges.keys()) { const [a, b] = k.split("|"); deg.set(a, (deg.get(a) || 0) + 1); deg.set(b, (deg.get(b) || 0) + 1); }
-
-    let m, w, song, joker = false;
-    const size = maxMatching(ms, ws, edge);
-    if (size > 0) {
-      // Wer die wenigsten Möglichkeiten hat, kommt zuerst dran.
-      const cands = [...ms, ...ws].filter((p) => deg.get(p.id));
-      const minDeg = Math.min(...cands.map((p) => deg.get(p.id)));
-      const x = shuffle(cands.filter((p) => deg.get(p.id) === minDeg))[0];
-      const partners = (x.g === "m" ? ws.filter((y) => edge(x, y)) : ms.filter((y) => edge(y, x)));
-      // Partner so wählen, dass alle anderen weiterhin ein Match haben können.
-      let best = [], bestScore = -Infinity;
-      for (const y of partners) {
-        const mm = x.g === "m" ? x : y, ww = x.g === "m" ? y : x;
-        const rest = maxMatching(ms.filter((p) => p !== mm), ws.filter((p) => p !== ww), edge);
-        const score = rest * 100 - deg.get(y.id);
-        if (score > bestScore) { bestScore = score; best = []; }
-        if (score === bestScore) best.push(y);
+    // Alle Paare mit mindestens einem gemeinsamen, noch freien Herz-Song
+    const edges = new Map();
+    const addEdges = (l1, l2) => {
+      for (const a of l1) for (const b of (l2 || l1)) {
+        if (a === b) continue; const k = pk(a, b); if (edges.has(k)) continue;
+        const c = common(a, b); if (c.length) edges.set(k, c);
       }
-      const y = best[rnd(best.length)];
-      m = x.g === "m" ? x : y; w = x.g === "m" ? y : x;
-      // Song wählen, der für andere Paare am wenigsten wichtig ist.
-      const c = edges.get(m.id + "|" + w.id);
-      const usage = (s) => { let n = 0; for (const [k, v] of edges) if (k !== m.id + "|" + w.id && v.includes(s)) n++; return n; };
-      const minU = Math.min(...c.map(usage));
-      song = shuffle(c.filter((s) => usage(s) === minU))[0];
-    } else {
-      joker = true;
-      m = ms[0]; w = ws[0];
-      const liked = freeIds.filter((s) => m.likes.has(s) || w.likes.has(s));
-      const pickFrom = liked.length ? liked : freeIds;
-      song = pickFrom[rnd(pickFrom.length)];
+    };
+    addEdges(M, W); addEdges(W); addEdges(M);
+
+    // Welcher Typ kommt dran?
+    let type = force || null;
+    if (!type) {
+      if (pool.length === 3) type = "trio";
+      else {
+        const pl = planFor(W.length, M.length);
+        if (!pl.mixed) type = W.length >= 2 ? "w" : "m";
+        else if (pl.same > 0 && Math.random() < pl.same / (pl.same + pl.mixed)) type = pl.sameG;
+        else type = "mixed";
+      }
     }
-    const likesW = A.active.filter((p) => p.g === "w" && p.likes.has(song)).length;
-    const likesM = A.active.filter((p) => p.g === "m" && p.likes.has(song)).length;
-    const k = A.history.length + 1;
-    const d = {
-      k, song, joker, likesW, likesM, ts: Date.now(),
-      w: { id: w.id, name: displayName(w), sung: w.sung + 1 },
-      m: { id: m.id, name: displayName(m), sung: m.sung + 1 },
-    };
-    const key = "d" + String(k).padStart(3, "0");
-    return {
-      ["people/" + w.id + "/sung"]: w.sung + 1,
-      ["people/" + m.id + "/sung"]: m.sung + 1,
-      ["history/" + key]: d,
-      current: d,
-    };
+    if (type === "mixed" && (!W.length || !M.length)) return null;
+    if (type === "w" && W.length < 2) return null;
+    if (type === "m" && M.length < 2) return null;
+    if (type === "trio" && pool.length < 3) return null;
+
+    const build = (members, song, joker) => buildDraw(A, members, song, joker, type);
+
+    if (type === "trio") {
+      const three = pool.length === 3 ? pool : shuffle(pool).slice(0, 3);
+      const score = (s) => three.filter((p) => p.likes.has(s)).length;
+      const best = Math.max(...freeIds.map(score));
+      const song = shuffle(freeIds.filter((s) => score(s) === best))[0];
+      return build(three, song, best < 2);
+    }
+
+    // Mögliche Paare dieses Typs
+    const group = type === "w" ? W : M;
+    const pairs = [];
+    if (type === "mixed") { for (const m of M) for (const w of W) if (edges.has(pk(m, w))) pairs.push([m, w]); }
+    else { for (let i = 0; i < group.length; i++) for (let j = i + 1; j < group.length; j++)
+             if (edges.has(pk(group[i], group[j]))) pairs.push([group[i], group[j]]); }
+
+    if (!pairs.length) {
+      // Joker: kein gemeinsamer Song mehr frei
+      const two = type === "mixed" ? [W[0], M[0]] : shuffle(group).slice(0, 2);
+      const liked = freeIds.filter((s) => two.some((p) => p.likes.has(s)));
+      const from = liked.length ? liked : freeIds;
+      return build(two, from[rnd(from.length)], true);
+    }
+
+    // Wer die wenigsten Möglichkeiten hat, kommt zuerst dran.
+    const deg = new Map();
+    pairs.forEach(([x, y]) => { deg.set(x.id, (deg.get(x.id) || 0) + 1); deg.set(y.id, (deg.get(y.id) || 0) + 1); });
+    const people = [...new Set(pairs.flat())];
+    const minDeg = Math.min(...people.map((p) => deg.get(p.id)));
+    const x = shuffle(people.filter((p) => deg.get(p.id) === minDeg))[0];
+    const partners = pairs.filter((pr) => pr.includes(x)).map((pr) => (pr[0] === x ? pr[1] : pr[0]));
+    let best = [], bestScore = -Infinity;
+    for (const y of partners) {
+      // Bei gemischten Duetten so wählen, dass die übrigen weiterhin ein Match haben können.
+      const rest = type === "mixed"
+        ? maxMatching(M.filter((p) => p !== x && p !== y), W.filter((p) => p !== x && p !== y), (m, w) => edges.has(pk(m, w)))
+        : 0;
+      const score = rest * 100 - (deg.get(y.id) || 0);
+      if (score > bestScore) { bestScore = score; best = []; }
+      if (score === bestScore) best.push(y);
+    }
+    const y = best[rnd(best.length)];
+    // Song wählen, der für andere Paare am wenigsten wichtig ist.
+    const c = edges.get(pk(x, y));
+    const usage = (s) => { let n = 0; for (const [k, v] of edges) if (k !== pk(x, y) && v.includes(s)) n++; return n; };
+    const minU = Math.min(...c.map(usage));
+    const song = shuffle(c.filter((s) => usage(s) === minU))[0];
+    const members = type === "mixed" ? (x.g === "w" ? [x, y] : [y, x]) : [x, y];
+    return build(members, song, false);
   }
+
+  const castOf = (h) => h.cast || [h.w, h.m].filter(Boolean);
 
   function computeUndo(ev) {
     const A = analyze(ev); const last = A.history[A.history.length - 1]; if (!last) return null;
     const upd = { ["history/d" + String(last.k).padStart(3, "0")]: null, current: A.history[A.history.length - 2] || null };
-    for (const side of ["w", "m"]) { const p = (ev.people || {})[last[side].id]; if (p) upd["people/" + last[side].id + "/sung"] = Math.max(0, (p.sung || 1) - 1); }
+    castOf(last).forEach((c) => { const p = (ev.people || {})[c.id]; if (p) upd["people/" + c.id + "/sung"] = Math.max(0, (p.sung || 1) - 1); });
     return upd;
   }
 
@@ -168,5 +237,5 @@
     return upd;
   }
 
-  window.LD = { CFG, SONGS, SONG, Store, analyze, computeDraw, computeUndo, botUpdates, rnd, shuffle, esc, displayName, newId };
+  window.LD = { CFG, SONGS, SONG, Store, analyze, computeDraw, computeManual, computeUndo, botUpdates, castOf, planFor, rnd, shuffle, esc, displayName, newId };
 })();
