@@ -100,7 +100,8 @@ function render() {
     if (step < 2) {
       h += cur.joker
         ? `<div class="teaser fade">Diesmal hat der Zufall entschieden …</div>`
-        : `<div class="teaser fade">${cur.likesW} ${cur.likesW === 1 ? "Frau" : "Frauen"} und ${cur.likesM} ${cur.likesM === 1 ? "Mann" : "Männer"} haben diesem Song ein Herz gegeben.</div>`;
+        : (() => { const herzen = (cur.likesW || 0) + (cur.likesM || 0);
+            return `<div class="teaser fade">So viele Herzen hat der Song bekommen: <b>${herzen}</b></div>`; })();
       if (step === 1) h += `<div class="drum">… und das Match ist</div>`;
     } else {
       const namen = castOf(cur).map((c) => `<span class="${c.g}">${esc(c.name)}</span>`).join(`<span class="heart">♥</span>`);
